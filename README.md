@@ -122,7 +122,7 @@ on:
   workflow_dispatch:
     inputs:
       target_repository:
-        description: 'The name of the repository to evaluate'
+        description: 'The name of the repository to evaluate (e.g., my-repo)'
         required: true
         type: string
 
@@ -132,7 +132,7 @@ jobs:
     steps:
       - name: Generate Token from GitHub App
         id: generate_token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2.2.1
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -141,24 +141,31 @@ jobs:
       - name: Fetch Repository Properties
         id: get_props
         env:
-          GH_TOKEN: ${{ steps.generate_token.outputs.token }} 
+          APP_TOKEN: ${{ steps.generate_token.outputs.token }} 
           TARGET_REPO: ${{ inputs.target_repository }}
         run: |
-          PHASE=$(gh api /repos/${{ github.repository_owner }}/$TARGET_REPO/properties/values --jq '.[] | select(.property_name=="ghas_rollout_phase") | .value')
+          # Fetch using curl to explicitly enforce App Token usage and parse with jq.
+          # The .[]? syntax ensures it doesn't crash if the repo has zero properties assigned.
+          PHASE=$(curl -s -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $APP_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            [https://api.github.com/repos/$](https://api.github.com/repos/$){{ github.repository_owner }}/$TARGET_REPO/properties/values \
+            | jq -r '.[]? | select(.property_name=="ghas_rollout_phase") | .value')
+          
           echo "phase=$PHASE" >> $GITHUB_OUTPUT
 
       - name: Apply Security Configuration
         # Dynamically checks if the repo's phase is currently in the Approved Phases Organization Variable
         if: contains(vars.APPROVED_GHAS_PHASES, steps.get_props.outputs.phase) && steps.get_props.outputs.phase != ''
         env:
-          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
+          APP_TOKEN: ${{ steps.generate_token.outputs.token }}
           CONFIG_ID: '12345' # Replace with your Configuration ID from Step 1
           TARGET_REPO: ${{ inputs.target_repository }}
         run: |
-          echo "Repository is in an approved phase. Enabling GHAS..."
-          curl -X PUT \
+          echo "Repository is in an approved phase ($TARGET_REPO). Enabling GHAS..."
+          curl -s -X PUT \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Authorization: Bearer $APP_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             [https://api.github.com/orgs/$](https://api.github.com/orgs/$){{ github.repository_owner }}/code-security/configurations/$CONFIG_ID/attach \
             -d '{"repositories":[{"name":"'$TARGET_REPO'"}]}'
