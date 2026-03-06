@@ -161,14 +161,23 @@ jobs:
           APP_TOKEN: ${{ steps.generate_token.outputs.token }}
           CONFIG_ID: '238329' # Replace with your Configuration ID from Step 1
           TARGET_REPO: ${{ inputs.target_repository }}
+          ORG_NAME: ${{ github.repository_owner }}
         run: |
           echo "Repository is in an approved phase ($TARGET_REPO). Enabling GHAS..."
-          curl -s -X PUT \
+          
+          # The attach API requires a numeric Repository ID, not a string name
+          REPO_ID=$(curl -s -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $APP_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/$ORG_NAME/$TARGET_REPO | jq -r '.id')
+          
+          # Issue a POST request to attach the configuration to the specific ID
+          curl -s -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $APP_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/orgs/${{ github.repository_owner}}/code-security/configurations/$CONFIG_ID/attach \
-            -d '{"repositories":[{"name":"'$TARGET_REPO'"}]}'
+            https://api.github.com/orgs/$ORG_NAME/code-security/configurations/$CONFIG_ID/attach \
+            -d '{"scope":"selected","selected_repository_ids":['"$REPO_ID"']}'
 ```
 ### 4B: Set up the Webhook Bridge
 Because native GitHub Webhooks cannot inject an Authorization: Bearer header, you must configure a lightweight proxy (e.g., AWS Lambda, Azure Function, or an integration tool like Make/Zapier) to bridge the gap:
