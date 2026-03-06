@@ -175,3 +175,43 @@ A GHAS license is consumed when a commit is pushed to a GHAS-enabled repository.
 * **Sandbox/POC Repositories:** If a repository was purely used to test GHAS (a sandbox) during the pilot phase, you should detach the Security Configuration and archive the repository when the test is complete. Those licenses will free up automatically after 90 days of no commits.
 * **Production Repositories:** If a pilot repository is a real production app and experiences a massive influx of new developers, it *will* consume new licenses. It is an anti-pattern to turn off security on active production code just to save money.
 * **Cost Governance:** Control costs by strictly managing *entry* via the **IssueOps** process. Only approve repositories that fit the budget or have high committer overlap. Once enabled, rely on the **Enterprise Billing Dashboard** to monitor Active Committer counts.
+
+# Step 5: Optimizing Code Scanning (Targeting specific branches)
+By default, the "Default Setup" applied in Step 1 will scan your main branch **and** all pull requests targeting your protected branches. While excellent for security, running CodeQL on every pull request can consume significant GitHub Actions minutes.
+If your goal is to minimize compute costs and **only** scan the main branch, you must use **Advanced Setup** for Code Scanning instead of Default Setup.
+To do this:
+1. 1	Ensure "Code scanning (Default setup)" is set to **Disabled** in your Organization Security Configuration (Step 1).
+2. 2	Push a .github/workflows/codeql.yml file to the repositories you wish to scan.
+3. 3	Explicitly define the on: triggers in the YAML file to only target the main branch, completely removing the pull_request trigger:
+
+```
+name: "CodeQL Advanced (Main Only)"
+
+on:
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: '20 4 * * 1' # Runs a weekly scan as a best practice
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: 'javascript, python' # Update with your repo's languages
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+```
+*This approach ensures that developers get immediate feedback in the Security tab after merging to main, without burning GitHub Actions minutes during the iterative Pull Request process.*
