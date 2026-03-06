@@ -30,7 +30,7 @@ We will use Custom Properties to tag repositories based on their approved rollou
 
 # Step 3: Identify Zero-Cost Repositories
 Before enabling GHAS on new phases, identify repositories that won't increase your bill.
-1. Run the open-source (ghas-license-utilization)[https://github.com/advanced-security/ghas-license-utilization] script (available on GitHub).
+1. Run the open-source [ghas-license-utilization](https://github.com/advanced-security/ghas-license-utilization) script (available on GitHub).
 2. Use the output to identify repositories where all active committers *already* have a GHAS license from your pilot group.
 3. Update the custom property of these highly overlapping repositories to phase-1-overlap.
 
