@@ -22,7 +22,7 @@ Instead of hardcoding rules into scripts, we use Organization Variables and Cust
 2. **Create the Control Variable:** Go to Org **Settings** > **Variables** > **Actions**. Create an Organization Variable named `APPROVED_GHAS_PHASES`. Set its value to: `pilot`,`phase-1-overlap`. *(Note: When you are ready to expand to phase 2, you simply update this variable to* *pilot,phase-1-overlap,phase-2* *without needing to modify any automation code).*
 
 # Step 3: Identify & Bulk-Tag Repositories via IssueOps
-Before enabling GHAS broadly, run the open-source (ghas-license-utilization)[https://github.com/advanced-security/ghas-license-utilization] script to find repositories where 100% of the active committers *already* have a GHAS license.
+Before enabling GHAS broadly, run the open-source [ghas-license-utilization](https://github.com/advanced-security/ghas-license-utilization) script to find repositories where 100% of the active committers *already* have a GHAS license.
 To easily tag these repositories (or onboard future ones), we will use an **IssueOps** workflow. This creates a self-service UI for managers to submit a list of repositories and select their phase, automatically generating an audit trail.
 ### 3A: Create the Issue Form Template
 In your central management repository, create a file at .github/ISSUE_TEMPLATE/bulk-tag.yml. This creates the form UI.
