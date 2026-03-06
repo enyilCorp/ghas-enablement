@@ -149,7 +149,7 @@ jobs:
           PHASE=$(curl -s -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $APP_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            [https://api.github.com/repos/$](https://api.github.com/repos/$){{ github.repository_owner }}/$TARGET_REPO/properties/values \
+            https://api.github.com/repos/${{ github.repository_owner }}/$TARGET_REPO/properties/values \
             | jq -r '.[]? | select(.property_name=="ghas_rollout_phase") | .value')
           
           echo "phase=$PHASE" >> $GITHUB_OUTPUT
@@ -159,7 +159,7 @@ jobs:
         if: contains(vars.APPROVED_GHAS_PHASES, steps.get_props.outputs.phase) && steps.get_props.outputs.phase != ''
         env:
           APP_TOKEN: ${{ steps.generate_token.outputs.token }}
-          CONFIG_ID: '12345' # Replace with your Configuration ID from Step 1
+          CONFIG_ID: '238329' # Replace with your Configuration ID from Step 1
           TARGET_REPO: ${{ inputs.target_repository }}
         run: |
           echo "Repository is in an approved phase ($TARGET_REPO). Enabling GHAS..."
@@ -167,7 +167,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $APP_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            [https://api.github.com/orgs/$](https://api.github.com/orgs/$){{ github.repository_owner }}/code-security/configurations/$CONFIG_ID/attach \
+            https://api.github.com/orgs/${{ github.repository_owner}}/code-security/configurations/$CONFIG_ID/attach \
             -d '{"repositories":[{"name":"'$TARGET_REPO'"}]}'
 ```
 ### 4B: Set up the Webhook Bridge
