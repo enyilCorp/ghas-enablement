@@ -130,10 +130,18 @@ jobs:
   check-and-enable:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate Token from GitHub App
+        id: generate_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - name: Fetch Repository Properties
         id: get_props
         env:
-          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }} 
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }} 
           TARGET_REPO: ${{ inputs.target_repository }}
         run: |
           PHASE=$(gh api /repos/${{ github.repository_owner }}/$TARGET_REPO/properties/values --jq '.[] | select(.property_name=="ghas_rollout_phase") | .value')
@@ -143,7 +151,7 @@ jobs:
         # Dynamically checks if the repo's phase is currently in the Approved Phases Organization Variable
         if: contains(vars.APPROVED_GHAS_PHASES, steps.get_props.outputs.phase) && steps.get_props.outputs.phase != ''
         env:
-          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
           CONFIG_ID: '12345' # Replace with your Configuration ID from Step 1
           TARGET_REPO: ${{ inputs.target_repository }}
         run: |
