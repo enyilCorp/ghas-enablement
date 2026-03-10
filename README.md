@@ -68,6 +68,14 @@ jobs:
     if: contains(github.event.issue.labels.*.name, 'bulk-tag')
     runs-on: ubuntu-latest
     steps:
+      - name: Generate Token from GitHub App
+        id: generate_token
+        uses: actions/create-github-app-token@v2.2.1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - name: Parse Issue Body
         id: parse
         run: |
@@ -85,7 +93,7 @@ jobs:
 
       - name: Apply Custom Properties
         env:
-          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
           PHASE: ${{ steps.parse.outputs.phase }}
         run: |
           echo "Applying phase: $PHASE"
@@ -106,7 +114,7 @@ jobs:
 
       - name: Close Issue & Comment
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
         run: |
           gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} -b "✅ **Automation Complete!** Successfully tagged repositories with the \`${{ steps.parse.outputs.phase }}\` property."
           gh issue close ${{ github.event.issue.number }} --repo ${{ github.repository }}
