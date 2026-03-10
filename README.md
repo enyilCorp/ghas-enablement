@@ -208,22 +208,31 @@ A GHAS license is consumed when a commit is pushed to a GHAS-enabled repository.
 * **Production Repositories:** If a pilot repository is a real production app and experiences a massive influx of new developers, it *will* consume new licenses. It is an anti-pattern to turn off security on active production code just to save money.
 * **Cost Governance:** Control costs by strictly managing *entry* via the **IssueOps** process. Only approve repositories that fit the budget or have high committer overlap. Once enabled, rely on the **Enterprise Billing Dashboard** to monitor Active Committer counts.
 
-# Step 5: Optimizing Code Scanning (Targeting specific branches)
-By default, the "Default Setup" applied in Step 1 will scan your main branch **and** all pull requests targeting your protected branches. While excellent for security, running CodeQL on every pull request can consume significant GitHub Actions minutes.
-If your goal is to minimize compute costs and **only** scan the main branch, you must use **Advanced Setup** for Code Scanning instead of Default Setup.
-To do this:
-1. 1	Ensure "Code scanning (Default setup)" is set to **Disabled** in your Organization Security Configuration (Step 1).
-2. 2	Push a .github/workflows/codeql.yml file to the repositories you wish to scan.
-3. 3	Explicitly define the on: triggers in the YAML file to only target the main branch, completely removing the pull_request trigger:
+# Step 5: Optimizing Code Scanning with a Reusable Workflow
 
-```
-name: "CodeQL Advanced (Main Only)"
+By default, the "Default Setup" applied in Step 1 will scan your main branch **and** all pull requests targeting your protected branches. While excellent for security, running CodeQL on every pull request can consume significant GitHub Actions minutes.
+
+For enterprise scale, the recommended approach is to define a **single reusable workflow** in your central management repository and have all other repositories call it. This gives you a single place to update the CodeQL version, runner, or language list across the entire organization.
+
+> **Note on languages and jobs:** CodeQL supports analyzing multiple languages within a **single job**, which is the pattern used in this guide. You may optionally use a matrix strategy to run a separate job per language for better parallelization, but for most teams a single job with multiple languages is simpler to maintain — especially in a reusable workflow context.
+
+## 5A: Create the Reusable CodeQL Workflow (Central Repository)
+
+In your central management repository, create the file `.github/workflows/codeql-reusable.yml`. The `workflow_call` trigger makes it callable by any repository in your organization.
+
+```yaml
+name: "CodeQL Analysis (Reusable)"
 
 on:
-  push:
-    branches: [ "main" ]
-  schedule:
-    - cron: '20 4 * * 1' # Runs a weekly scan as a best practice
+  workflow_call:
+    inputs:
+      languages:
+        description: >
+          Comma-separated list of languages to analyze.
+          Supported values: c-cpp, csharp, go, java-kotlin, javascript-typescript, python, ruby, swift.
+        required: false
+        type: string
+        default: 'javascript-typescript, python'
 
 jobs:
   analyze:
@@ -235,15 +244,128 @@ jobs:
       security-events: write
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: 'javascript, python' # Update with your repo's languages
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          # All provided languages are analyzed within this single job.
+          languages: ${{ inputs.languages }}
 
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
 ```
-*This approach ensures that developers get immediate feedback in the Security tab after merging to main, without burning GitHub Actions minutes during the iterative Pull Request process.*
+
+## 5B: Call the Reusable Workflow from Other Repositories
+
+Each consuming repository only needs a minimal caller workflow at `.github/workflows/codeql.yml`. The `languages` input is **optional** — it defaults to `javascript-typescript, python` if omitted.
+
+**Example: Use the defaults (JavaScript/TypeScript & Python)**
+
+```yaml
+name: "CodeQL Analysis"
+
+on:
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: '20 4 * * 1' # Weekly scan as a best practice
+
+jobs:
+  codeql:
+    uses: <YOUR_ORG>/org-management-automation/.github/workflows/codeql-reusable.yml@main
+    # 'languages' is omitted here — defaults to 'javascript-typescript, python'
+```
+
+**Example: Override languages for a Java + Python repository**
+
+```yaml
+name: "CodeQL Analysis"
+
+on:
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: '20 4 * * 1'
+
+jobs:
+  codeql:
+    uses: <YOUR_ORG>/org-management-automation/.github/workflows/codeql-reusable.yml@main
+    with:
+      languages: 'java-kotlin, python'
+```
+
+## 5C: Enforce via Required Workflows (Organization-Level)
+
+To guarantee that **every repository** in your organization runs a CodeQL workflow without needing to push a caller file to each repo, use **Required Workflows** (available on GitHub Enterprise Cloud).
+
+Required Workflows point to a workflow file in your central repository that must have standard event triggers (such as `pull_request`). Create a dedicated required workflow file (`.github/workflows/codeql-required.yml`) in your management repository that calls the reusable workflow:
+
+```yaml
+name: "CodeQL Analysis (Required)"
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: '20 4 * * 1'
+
+jobs:
+  codeql:
+    uses: <YOUR_ORG>/org-management-automation/.github/workflows/codeql-reusable.yml@main
+    # 'languages' defaults to 'javascript-typescript, python'
+    # Individual repositories can override this by defining their own caller workflow (see 5B).
+```
+
+Then configure the requirement:
+
+1. Navigate to your **Organization Settings** > **Actions** > **General**.
+2. Scroll to **Required workflows** and click **Add workflow**.
+3. Select your central management repository and point to `.github/workflows/codeql-required.yml`.
+4. Choose which repositories the requirement applies to (all repositories, or selected repositories).
+
+> **How it works:** GitHub automatically runs the required workflow on pull requests and pushes to `main` in every targeted repository, even if those repositories have no `.github/workflows/` of their own. Repositories that need a different language list can add their own caller workflow (see 5B) to override the defaults.
+
+> **Note:** Required Workflows require GitHub Enterprise Cloud. If you are on GitHub Enterprise Server, push the caller workflow to each repository via the IssueOps process in Step 3 or use a bulk API call.
+
+## 5D: Standalone Advanced Setup (Single Repository)
+
+If you only need to configure one specific repository without the reusable pattern, you can push a self-contained workflow directly. This is also the right approach when you need to minimize GitHub Actions minutes by **only** scanning the main branch.
+
+```yaml
+name: "CodeQL Advanced (Main Only)"
+
+on:
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: '20 4 * * 1' # Weekly scan as a best practice
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          # Analyze all required languages in a single job.
+          # Defaults: 'javascript-typescript, python' — update as needed.
+          languages: 'javascript-typescript, python'
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+```
+
+*Ensure "Code scanning (Default setup)" is set to **Disabled** in your Organization Security Configuration (Step 1) before using Advanced Setup, to avoid duplicate results.*
